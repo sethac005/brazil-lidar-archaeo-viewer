@@ -9,131 +9,78 @@
     <style>
         body { margin:0; padding:0; overflow:hidden; font-family: Arial, sans-serif; }
         #cesiumContainer { width:100vw; height:100vh; }
-        .control-panel { position:absolute; top:10px; right:10px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3); width:280px; z-index:100; max-height:90vh; overflow-y:auto; }
+        .control-panel { position:absolute; top:10px; right:10px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3); width:280px; z-index:100; }
         input[type="range"] { width:100%; }
-        button { margin:5px 0; width:100%; padding:8px; }
+        button { margin:5px 0; width:100%; }
     </style>
 </head>
 <body>
     <div id="cesiumContainer"></div>
 
     <div class="control-panel">
-        <h3>🇧🇷 Brazil LiDAR Archaeo Viewer</h3>
-        <p><strong>Amazon focus</strong> — Dynamic sun for hidden structures</p>
-        
-        <label><input type="checkbox" id="pcToggle" checked> Show Point Cloud (add your 3D Tiles URL in code)</label><br><br>
-        
-        <label>Hillshade/DSM Opacity: <span id="opacityVal">0.6</span></label>
-        <input type="range" id="hillOpacity" min="0" max="1" step="0.05" value="0.6">
-        
-        <h4>Sun & Lighting Controls (Archaeology)</h4>
-        <label>Date (day of year): <span id="dateVal">172</span></label>
-        <input type="range" id="dateSlider" min="1" max="365" value="172">
-        <label>Time of Day: <span id="timeVal">12</span></label>
-        <input type="range" id="timeSlider" min="0" max="24" step="0.1" value="12">
-        
-        <button onclick="setSolstice(2)">🌞 Winter Solstice (Jun 21)</button>
-        <button onclick="setSolstice(1)">☀️ Summer Solstice (Dec 21)</button>
-        <button onclick="setEquinox()">🌍 Equinox</button>
+        <h3>Brazil LiDAR Archaeo Viewer</h3>
+        <p>Demo with public point cloud. Replace with Amazon data.</p>
+        <label><input type="checkbox" id="pcToggle" checked> Point Cloud</label><br>
+        <label>Hillshade Opacity: <span id="opacityVal">0.5</span></label>
+        <input type="range" id="hillOpacity" min="0" max="1" step="0.05" value="0.5" oninput="updateOpacity(this)">
+        <h4>Sun Simulation</h4>
+        <label>Date: <span id="dateVal">172</span></label>
+        <input type="range" id="dateSlider" min="1" max="365" value="172" oninput="updateSun()">
+        <label>Time: <span id="timeVal">12</span></label>
+        <input type="range" id="timeSlider" min="0" max="24" step="0.25" value="12" oninput="updateSun()">
+        <button onclick="setSolstice(2)">Winter Solstice</button>
+        <button onclick="setSolstice(1)">Summer Solstice</button>
         <button onclick="toggleShadows()">Toggle Shadows</button>
-        <button onclick="animateSun()">▶️ Animate Day</button>
-        
-        <small>Process LAZ → 3D Tiles / hillshade XYZ and update URLs in index.html for full data.</small>
     </div>
 
     <script>
-        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlY2Y2Zjk3OS1kZjY1LTQ1MjktYWMzYy0xN2Y2ZGYzN2Q1MjQiLCJpZCI6MTAyOTk5LCJpYXQiOjE2OTk5MjI5MTZ9.your-token-or-use-free'; // Replace if needed or use public
-
+        Cesium.Ion.defaultAccessToken = '';
         const viewer = new Cesium.Viewer('cesiumContainer', {
             terrainProvider: Cesium.createWorldTerrain(),
-            imageryProvider: new Cesium.ArcGisMapServerImageryProvider({
-                url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
-            }),
-            baseLayerPicker: false,
-            geocoder: false,
-            homeButton: true,
-            sceneModePicker: true,
-            navigationHelpButton: false,
-            animation: true,
-            timeline: true,
-            shadows: true,
-            sunlight: true
+            imageryProvider: new Cesium.ArcGisMapServerImageryProvider({url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'}),
+            shadows: true
         });
-
         viewer.scene.globe.enableLighting = true;
 
-        // Point cloud placeholder - comment out or replace with real 3D Tiles URL
-        let pointCloudLayer;
-        document.getElementById('pcToggle').addEventListener('change', function(e) {
-            if (e.target.checked) {
-                // Add your point cloud here
-                console.log('Point cloud layer would load here - add 3D Tiles URL');
-            } else if (pointCloudLayer) {
-                viewer.scene.primitives.remove(pointCloudLayer);
-            }
-        });
+        let pointCloudLayer = null;
+        function loadDemoPointCloud() {
+            if (pointCloudLayer) viewer.scene.primitives.remove(pointCloudLayer);
+            pointCloudLayer = viewer.scene.primitives.add(new Cesium.Cesium3DTileset({
+                url: 'https://webimaging.lillemetropole.fr/externe/maillage/2016_mel_10cm/3dtiles/tileset.json'
+            }));
+        }
+        document.getElementById('pcToggle').addEventListener('change', e => { if (e.target.checked) loadDemoPointCloud(); else if (pointCloudLayer) {viewer.scene.primitives.remove(pointCloudLayer); pointCloudLayer=null;} });
+        loadDemoPointCloud();
 
-        // Hillshade placeholder - can be enhanced with real XYZ tiles
-        const hillshadeLayer = viewer.imageryLayers.addImageryProvider(
-            new Cesium.UrlTemplateImageryProvider({
-                url: 'https://example.com/your-hillshade/{z}/{x}/{y}.png' // Replace or remove
-            })
-        );
-        hillshadeLayer.alpha = 0.6;
+        // Hillshade (demo using public or comment out)
+        let hillshadeLayer = viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+            url : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' , // placeholder, replace with real hillshade
+            maximumLevel: 19
+        }));
+        hillshadeLayer.alpha = 0.5;
 
-        const opacitySlider = document.getElementById('hillOpacity');
-        const opacityVal = document.getElementById('opacityVal');
-        opacitySlider.addEventListener('input', () => {
-            hillshadeLayer.alpha = parseFloat(opacitySlider.value);
-            opacityVal.textContent = opacitySlider.value;
-        });
-
-        // Sun controls
-        const clock = viewer.clock;
-        const dateSlider = document.getElementById('dateSlider');
-        const dateVal = document.getElementById('dateVal');
-        const timeSlider = document.getElementById('timeSlider');
-        const timeVal = document.getElementById('timeVal');
+        function updateOpacity(slider) {
+            hillshadeLayer.alpha = parseFloat(slider.value);
+            document.getElementById('opacityVal').textContent = slider.value;
+        }
 
         function updateSun() {
-            const year = new Date().getFullYear();
-            const dayOfYear = parseInt(dateSlider.value);
-            const hour = parseFloat(timeSlider.value);
-            const date = new Date(year, 0, dayOfYear);
+            const day = parseInt(document.getElementById('dateSlider').value);
+            const hour = parseFloat(document.getElementById('timeSlider').value);
+            const date = new Date(2026, 0, day);
             date.setHours(hour);
-            clock.currentTime = Cesium.JulianDate.fromDate(date);
-            dateVal.textContent = dayOfYear;
-            timeVal.textContent = hour.toFixed(1);
+            viewer.clock.currentTime = Cesium.JulianDate.fromDate(date);
+            document.getElementById('dateVal').textContent = day;
+            document.getElementById('timeVal').textContent = hour;
         }
-        dateSlider.addEventListener('input', updateSun);
-        timeSlider.addEventListener('input', updateSun);
 
         window.setSolstice = function(type) {
-            if (type === 2) dateSlider.value = 172; // June
-            if (type === 1) dateSlider.value = 355; // Dec
+            document.getElementById('dateSlider').value = (type === 1) ? 355 : 172;
             updateSun();
         };
-        window.setEquinox = function() {
-            dateSlider.value = 80; // March approx
-            updateSun();
-        };
-        window.toggleShadows = function() {
-            viewer.shadows = !viewer.shadows;
-        };
-        window.animateSun = function() {
-            clock.shouldAnimate = true;
-            clock.multiplier = 7200;
-            setTimeout(() => clock.shouldAnimate = false, 20000);
-        };
+        window.toggleShadows = () => viewer.shadows = !viewer.shadows;
 
-        // Fly to Brazil/Amazon
-        viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(-55.0, -10.0, 1000000),
-            duration: 3
-        });
-
-        updateSun();
-        console.log('%c✅ Brazil LiDAR Viewer ready (placeholders removed / commented). Add your data URLs in code!', 'color: green; font-weight: bold');
+        viewer.camera.flyTo({destination: Cesium.Cartesian3.fromDegrees(-55, -10, 1000000)});
     </script>
 </body>
 </html>
