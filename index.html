@@ -3,84 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brazil LiDAR Archaeo Viewer — 3D + Solar Simulation</title>
+    <title>Brazil LiDAR Archaeo Viewer — Acre Point Cloud + Solar Simulation</title>
     <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
     <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" />
     <style>
         body { margin:0; padding:0; overflow:hidden; font-family: Arial, sans-serif; }
         #cesiumContainer { width:100vw; height:100vh; }
-        .control-panel { position:absolute; top:10px; right:10px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3); width:280px; z-index:100; }
-        input[type="range"] { width:100%; }
-        button { margin:5px 0; width:100%; }
+        .control-panel {
+            position:absolute; top:12px; right:12px;
+            background: rgba(255,255,255,0.95);
+            padding: 14px 16px; border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+            width: 290px; z-index: 100;
+            font-size: 13px;
+        }
+        .control-panel h3 { margin: 0 0 6px 0; font-size: 16px; }
+        .control-panel h4 { margin: 12px 0 6px 0; font-size: 13px; color: #333; }
+        input[type="range"] { width: 100%; margin: 4px 0 8px 0; }
+        button {
+            width: 100%; margin: 4px 0; padding: 7px;
+            border: none; border-radius: 6px;
+            background: #1a73e8; color: white; cursor: pointer; font-size: 12px;
+        }
+        button:hover { background: #1557b0; }
+        label { display: block; margin: 4px 0; }
+        .status { font-size: 11px; color: #666; margin-top: 8px; }
     </style>
 </head>
 <body>
     <div id="cesiumContainer"></div>
 
     <div class="control-panel">
-        <h3>Brazil LiDAR Archaeo Viewer</h3>
-        <p>Demo with public point cloud. Replace with Amazon data.</p>
-        <label><input type="checkbox" id="pcToggle" checked> Point Cloud</label><br>
-        <label>Hillshade Opacity: <span id="opacityVal">0.5</span></label>
-        <input type="range" id="hillOpacity" min="0" max="1" step="0.05" value="0.5" oninput="updateOpacity(this)">
-        <h4>Sun Simulation</h4>
-        <label>Date: <span id="dateVal">172</span></label>
-        <input type="range" id="dateSlider" min="1" max="365" value="172" oninput="updateSun()">
-        <label>Time: <span id="timeVal">12</span></label>
-        <input type="range" id="timeSlider" min="0" max="24" step="0.25" value="12" oninput="updateSun()">
-        <button onclick="setSolstice(2)">Winter Solstice</button>
-        <button onclick="setSolstice(1)">Summer Solstice</button>
+        <h3>🇧🇷 Brazil LiDAR Archaeo Viewer</h3>
+        <p style="margin:0 0 8px 0; color:#444;">Acre (Kaggle) Point Cloud + Solar Simulation</p>
+
+        <label>
+            <input type="checkbox" id="pcToggle" checked>
+            Show Point Cloud (Acre 2014)
+        </label>
+
+        <h4>Sun & Lighting (for alignments)</h4>
+        <label>Day of year: <span id="dateVal">172</span></label>
+        <input type="range" id="dateSlider" min="1" max="365" value="172">
+
+        <label>Time of day (hours): <span id="timeVal">12.0</span></label>
+        <input type="range" id="timeSlider" min="0" max="24" step="0.25" value="12">
+
+        <button onclick="setSolstice(2)">🌞 Winter Solstice (Jun 21)</button>
+        <button onclick="setSolstice(1)">☀️ Summer Solstice (Dec 21)</button>
+        <button onclick="setEquinox()">🌍 Equinox</button>
         <button onclick="toggleShadows()">Toggle Shadows</button>
+        <button onclick="flyToAcre()">📍 Fly to Acre Data</button>
+
+        <div class="status">
+            Asset: Cesium ion #5048887<br>
+            Location: ~9.93°S, 67.55°W (Acre)
+        </div>
     </div>
 
     <script>
-        Cesium.Ion.defaultAccessToken = '';
+        // Put your own free Cesium ion token here if needed
+        // Cesium.Ion.defaultAccessToken = 'your_token_here';
+
         const viewer = new Cesium.Viewer('cesiumContainer', {
             terrainProvider: Cesium.createWorldTerrain(),
-            imageryProvider: new Cesium.ArcGisMapServerImageryProvider({url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'}),
-            shadows: true
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: true,
+            sceneModePicker: true,
+            navigationHelpButton: false,
+            animation: true,
+            timeline: true,
+            shadows: true,
+            shouldAnimate: false
         });
+
+        // High-res imagery
+        viewer.imageryLayers.removeAll();
+        viewer.imageryLayers.addImageryProvider(
+            new Cesium.ArcGisMapServerImageryProvider({
+                url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+            })
+        );
+
         viewer.scene.globe.enableLighting = true;
+        viewer.scene.globe.depthTestAgainstTerrain = true;
 
-        let pointCloudLayer = null;
-        function loadDemoPointCloud() {
-            if (pointCloudLayer) viewer.scene.primitives.remove(pointCloudLayer);
-            pointCloudLayer = viewer.scene.primitives.add(new Cesium.Cesium3DTileset({
-                url: 'https://webimaging.lillemetropole.fr/externe/maillage/2016_mel_10cm/3dtiles/tileset.json'
-            }));
+        // ========== REAL ACRE POINT CLOUD ==========
+        let pointCloudTileset = null;
+
+        async function loadAcrePointCloud() {
+            try {
+                if (pointCloudTileset) {
+                    viewer.scene.primitives.remove(pointCloudTileset);
+                    pointCloudTileset = null;
+                }
+
+                pointCloudTileset = await Cesium.Cesium3DTileset.fromIonAssetId(5048887);
+                viewer.scene.primitives.add(pointCloudTileset);
+
+                // Optional: make points a bit bigger / better looking
+                pointCloudTileset.style = new Cesium.Cesium3DTileStyle({
+                    pointSize: 2.5
+                });
+
+                console.log('✅ Acre point cloud loaded (asset 5048887)');
+
+                // Fly to the known Kaggle coordinates after a short delay
+                setTimeout(flyToAcre, 1500);
+
+            } catch (error) {
+                console.error('Failed to load point cloud:', error);
+                alert('Could not load the point cloud. Check the browser console and make sure the Cesium ion asset is still available.');
+            }
         }
-        document.getElementById('pcToggle').addEventListener('change', e => { if (e.target.checked) loadDemoPointCloud(); else if (pointCloudLayer) {viewer.scene.primitives.remove(pointCloudLayer); pointCloudLayer=null;} });
-        loadDemoPointCloud();
 
-        // Hillshade (demo using public or comment out)
-        let hillshadeLayer = viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
-            url : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' , // placeholder, replace with real hillshade
-            maximumLevel: 19
-        }));
-        hillshadeLayer.alpha = 0.5;
+        // Toggle checkbox
+        document.getElementById('pcToggle').addEventListener('change', function(e) {
+            if (e.target.checked) {
+                loadAcrePointCloud();
+            } else if (pointCloudTileset) {
+                viewer.scene.primitives.remove(pointCloudTileset);
+                pointCloudTileset = null;
+            }
+        });
 
-        function updateOpacity(slider) {
-            hillshadeLayer.alpha = parseFloat(slider.value);
-            document.getElementById('opacityVal').textContent = slider.value;
+        // Load immediately
+        loadAcrePointCloud();
+
+        // ========== CAMERA TO ACRE ==========
+        function flyToAcre() {
+            // Kaggle subset coordinates: approximately -9.929, -67.554
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(-67.554, -9.929, 2500),
+                orientation: {
+                    heading: Cesium.Math.toRadians(0),
+                    pitch: Cesium.Math.toRadians(-45),
+                    roll: 0
+                },
+                duration: 2.5
+            });
         }
+
+        // Make the function global so the button works
+        window.flyToAcre = flyToAcre;
+
+        // ========== SUN / LIGHTING CONTROLS ==========
+        const dateSlider = document.getElementById('dateSlider');
+        const timeSlider = document.getElementById('timeSlider');
+        const dateVal = document.getElementById('dateVal');
+        const timeVal = document.getElementById('timeVal');
 
         function updateSun() {
-            const day = parseInt(document.getElementById('dateSlider').value);
-            const hour = parseFloat(document.getElementById('timeSlider').value);
-            const date = new Date(2026, 0, day);
-            date.setHours(hour);
+            const dayOfYear = parseInt(dateSlider.value);
+            const hour = parseFloat(timeSlider.value);
+
+            // Create a date in 2026
+            const date = new Date(Date.UTC(2026, 0, 1));
+            date.setUTCDate(dayOfYear);
+            date.setUTCHours(hour, 0, 0, 0);
+
             viewer.clock.currentTime = Cesium.JulianDate.fromDate(date);
-            document.getElementById('dateVal').textContent = day;
-            document.getElementById('timeVal').textContent = hour;
+            viewer.clock.shouldAnimate = false;
+
+            dateVal.textContent = dayOfYear;
+            timeVal.textContent = hour.toFixed(1);
         }
 
+        dateSlider.addEventListener('input', updateSun);
+        timeSlider.addEventListener('input', updateSun);
+
         window.setSolstice = function(type) {
-            document.getElementById('dateSlider').value = (type === 1) ? 355 : 172;
+            // type 1 = Summer (Dec 21 ≈ day 355), type 2 = Winter (Jun 21 ≈ day 172)
+            dateSlider.value = (type === 1) ? 355 : 172;
             updateSun();
         };
-        window.toggleShadows = () => viewer.shadows = !viewer.shadows;
 
-        viewer.camera.flyTo({destination: Cesium.Cartesian3.fromDegrees(-55, -10, 1000000)});
+        window.setEquinox = function() {
+            dateSlider.value = 80; // ~ March 21
+            updateSun();
+        };
+
+        window.toggleShadows = function() {
+            viewer.shadows = !viewer.shadows;
+        };
+
+        // Initialize sun position
+        updateSun();
+
+        // Start looking at South America
+        viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(-55, -10, 1800000)
+        });
+
+        console.log('%c✅ Brazil LiDAR Archaeo Viewer ready with real Acre data!', 'color:#27ae60; font-weight:bold; font-size:14px');
     </script>
 </body>
 </html>
